@@ -1,0 +1,26 @@
+# lab.skyia.jp のマニフェスト。`kubectl kustomize deploy/k8s` で中身を確かめられる。
+# REPLACE_ME の付いたところは、使う前に埋めること(`grep -rn REPLACE_ME deploy/` で一覧が出る)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: lab
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: lab
+    includeSelectors: true
+
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+images:
+  # REPLACE_ME: イメージの置き場所。CI は ghcr.io/<GitHub のユーザー名>/<リポジトリ名> に push する
+  #   例: newName: ghcr.io/your-name/lab.skyia.jp
+  # newTag は CI が付けるタグ(main の commit の sha、例: sha-1a2b3c4)にする
+  - name: lab
+    newName: REPLACE_ME/lab
+    newTag: latest

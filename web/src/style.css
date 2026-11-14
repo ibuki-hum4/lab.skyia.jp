@@ -1,0 +1,5 @@
+/* Tailwind CSS v4。設定ファイルは使わず、ここに書く */
+@import "tailwindcss";
+
+/* 記事の本文(サーバーが作った HTML)は `class="prose"` で整える */
+@plugin "@tailwindcss/typography";

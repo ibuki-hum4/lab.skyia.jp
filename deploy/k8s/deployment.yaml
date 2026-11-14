@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab
+spec:
+  # SQLite のファイルを 2 つの Pod から同時に書かないように、1 つだけにする
+  replicas: 1
+  # 更新のときも、古い Pod を止めてから新しい Pod を立てる(少しだけ止まる)
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # イメージの bun ユーザー
+        runAsGroup: 1000
+        fsGroup: 1000 # PVC に bun ユーザーが書けるようにする
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: lab
+          image: lab # kustomization.yaml の images で置き換わる
+          ports:
+            - name: http
+              containerPort: 3927
+          env:
+            # アプリの手前にあるプロキシの段数。いいねの連打の制限で、クライアントの IP を取るのに使う。
+            # Ingress のコントローラー(ingress-nginx など)だけなら 1。
+            # その前にロードバランサーや CDN が X-Forwarded-For を足すなら、その分を足す。
+            - name: TRUST_PROXY_HOPS
+              value: "1"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 20 # 起動時に記事を全部 HTML にするので、少し待つ
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: lab-data
+        - name: tmp
+          emptyDir: {}

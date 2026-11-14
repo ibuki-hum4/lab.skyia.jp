@@ -1,0 +1,19 @@
+{
+  "name": "lab-skyia-jp",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "bun run --parallel dev:server dev:web",
+    "dev:server": "bun run --cwd server dev",
+    "dev:web": "bun run --cwd web dev",
+    "build": "bun run --filter @lab/web build",
+    "start": "bun run --filter @lab/server start",
+    "test": "bun run --filter @lab/server test",
+    "typecheck": "bun run --filter '@lab/*' typecheck",
+    "lint": "bun run --filter @lab/web lint"
+  }
+}

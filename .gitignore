@@ -1,0 +1,10 @@
+node_modules/
+dist/
+# 開発中の SQLite(bun run dev で作られる)
+.data/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+.DS_Store

@@ -1,0 +1,26 @@
+{
+  "name": "@lab/server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./api": "./src/routes.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "dev": "LAB_DB_PATH=../.data/lab.db bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "build": "bun build src/main.ts --target=bun --outfile=dist/server.js",
+    "test": "bun test",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@senrijs/senri": "^0.3.1",
+    "markdown-it": "^15.0.3",
+    "shiki": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "@types/markdown-it": "^14.2.0",
+    "typescript": "~6.0.3"
+  }
+}
