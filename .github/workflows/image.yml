@@ -98,27 +98,46 @@ jobs:
           tags: ${{ env.IMAGE_BASE }}-migrator:${{ steps.meta.outputs.sha_tag }}
           cache-from: type=gha
 
+      # ニセの HoshID(server/scripts/fake-oidc.ts)を runner の上で立てる。/auth/login の確認に使う
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
+
       # 本番と同じ縛り(uid 1000、ルートは読み取り専用、capabilities なし、書けるのは /tmp だけ)で、
-      # migrator でマイグレーションを当て、アプリを立ち上げて /healthz と /api/me が返ることを確かめる。
+      # migrator でマイグレーションを当て、アプリを立ち上げて /healthz・/api/me・/auth/login が返ることを確かめる。
+      # ニセの HoshID(127.0.0.1:9999)に届くように、コンテナは host のネットワークで動かす。
       - name: 起動できることを確かめる
         run: |
           set -eu
-          docker network create smoke
-          docker run -d --name db --network smoke -e POSTGRES_DB=lab -e POSTGRES_USER=lab -e POSTGRES_PASSWORD=lab postgres:17-alpine
-          for i in $(seq 1 30); do docker exec db pg_isready -U lab -d lab && break; sleep 1; done
-          URL=postgres://lab:lab@db:5432/lab
-          docker run --rm --network smoke --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL -e DATABASE_URL=$URL "${{ env.IMAGE_BASE }}-migrator:${{ steps.meta.outputs.sha_tag }}"
-          docker run -d --name smoke --network smoke -p 3927:3927 --user 1000:1000 --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp -e DATABASE_URL=$URL -e LAB_BASE_URL=http://localhost:3927 -e BETTER_AUTH_SECRET=smoke-test-only-0123456789abcdefghijklmnop -e TRUSTED_PROXIES=10.1.0.0/16 "${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.sha_tag }}"
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:3927/healthz; then
-              echo
-              test "$(curl -fsS http://127.0.0.1:3927/api/me)" = "null"
-              exit 0
-            fi
-            sleep 1
-          done
-          docker logs smoke
-          exit 1
+          bun server/scripts/fake-oidc.ts > fake-oidc.log 2>&1 &
+          docker run -d --name db -p 127.0.0.1:5432:5432 -e POSTGRES_DB=lab -e POSTGRES_USER=lab -e POSTGRES_PASSWORD=lab postgres:17-alpine
+          for i in $(seq 1 30); do docker exec db pg_isready -h 127.0.0.1 -U lab -d lab && break; sleep 1; done
+          URL=postgres://lab:lab@127.0.0.1:5432/lab
+          docker run --rm --network host --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL -e DATABASE_URL=$URL "${{ env.IMAGE_BASE }}-migrator:${{ steps.meta.outputs.sha_tag }}"
+          docker run -d --name smoke --network host --user 1000:1000 --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp -e DATABASE_URL=$URL -e LAB_BASE_URL=http://127.0.0.1:3927 -e BETTER_AUTH_SECRET=smoke-test-only-0123456789abcdefghijklmnop -e TRUSTED_PROXIES=10.1.0.0/16 -e HOSHID_ISSUER=http://127.0.0.1:9999 -e HOSHID_CLIENT_ID=lab-dev -e HOSHID_CLIENT_SECRET=lab-dev-secret "${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.sha_tag }}"
+
+          fail() { echo "::error::$1"; docker logs smoke; cat fake-oidc.log; exit 1; }
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3927/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:3927/healthz >/dev/null || fail "/healthz が返りません"
+          test "$(curl -fsS http://127.0.0.1:3927/api/me)" = "null" || fail "/api/me が null を返しません"
+
+          # /auth/login は、HoshID の認可エンドポイントへの 302 になる(Better Auth と、その依存を読み込む道)
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:3927/auth/login?next=%2F')
+          LOCATION=$(curl -s -o /dev/null -w '%{redirect_url}' 'http://127.0.0.1:3927/auth/login?next=%2F')
+          echo "/auth/login: $CODE → $LOCATION"
+          test "$CODE" = "302" || fail "/auth/login が 302 ではありません: $CODE"
+          case "$LOCATION" in
+            http://127.0.0.1:9999/authorize\?*) ;;
+            *) fail "/auth/login の行き先が HoshID ではありません: $LOCATION" ;;
+          esac
+
+          # 落ちていないこと(EROFS などでプロセスが死ぬと、ここで分かる)
+          sleep 2
+          test "$(docker inspect -f '{{.State.Running}}' smoke)" = "true" || fail "アプリが止まりました"
+          curl -fsS http://127.0.0.1:3927/healthz >/dev/null || fail "/auth/login のあと /healthz が返りません"
+          if docker logs smoke 2>&1 | grep -E 'EROFS|unable to write files'; then fail "読み取り専用のルートに書こうとしました"; fi
+          echo "ok"
 
       - name: 公開する
         if: github.event_name != 'pull_request'
