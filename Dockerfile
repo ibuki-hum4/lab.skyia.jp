@@ -58,4 +58,7 @@ EXPOSE 3927
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
   CMD wget -q -O /dev/null http://127.0.0.1:3927/healthz || exit 1
 
-CMD ["bun", "server.js"]
+# --no-install: import したパッケージが見つからなくても、Bun の自動インストールを走らせない。
+# 走ると読み取り専用のルート(readOnlyRootFilesystem)に書こうとして EROFS で落ちる。
+# (@better-auth/core は、入っていない @opentelemetry/api を動的に import する。なければ使わないだけ)
+CMD ["bun", "--no-install", "server.js"]
