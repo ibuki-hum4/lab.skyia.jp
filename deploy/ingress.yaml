@@ -1,0 +1,26 @@
+# Traefik。
+#
+# **証明書の指定を持たない。** このクラスタでは TLS を Traefik 側でまとめて
+# 解決していて、Ingress ごとに certresolver や tls を書かない
+# （HoshID の k8s/ingress.yaml と同じ形）。ここに書き足すと、クラスタ側の
+# 設定と二重になって食い違う。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lab
+  namespace: lab
+  labels:
+    name: lab
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: lab.skyia.jp
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: lab
+                port:
+                  number: 80

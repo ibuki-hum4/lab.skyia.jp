@@ -7,7 +7,7 @@
 | [content/](content/) | 記事と実験の Markdown |
 | [server/](server/) | Senri(Bun)。API と、ビルド済みの画面を配る |
 | [web/](web/) | Vue 3 + Vite + TypeScript + vue-router の SPA |
-| [deploy/](deploy/) | k8s のマニフェスト(kustomize)と ArgoCD の Application の例 |
+| [deploy/](deploy/) | k8s のマニフェスト(kustomize)と ArgoCD の Application |
 | [Dockerfile](Dockerfile) | web のビルド → Bun の小さいイメージで server を動かす |
 
 ## 動かし方
@@ -86,32 +86,78 @@ docker run --rm -p 3927:3927 -v lab-data:/data lab
 - `HEALTHCHECK` で `/healthz` を見ます
 - SQLite は `/data/lab.db` です。`/data` は外からつなぎます
 
-## deploy(k8s)
+## デプロイ
 
-[deploy/k8s/](deploy/k8s/) が kustomize のマニフェスト、[deploy/argocd/application.yaml](deploy/argocd/application.yaml) が ArgoCD の Application の例です。中身は `kubectl kustomize deploy/k8s` で確かめられます。
+| | |
+|---|---|
+| ドメイン | `lab.skyia.jp` |
+| レジストリ | `ghcr.io/ibuki-hum4/lab.skyia.jp` |
+| Ingress | Traefik(TLS はクラスタ側で解決するので、Ingress には書かない) |
+| マニフェスト | [deploy/](deploy/)(kustomize。`kubectl kustomize deploy` で中身を確かめられる) |
 
-SQLite を使うので、Deployment はレプリカ 1・更新は `Recreate` です。readiness と liveness は `/healthz` を見ます。
+形は HoshID の `k8s/` と `.github/workflows/image.yml` にそろえています。
 
-### 埋めるところ
+### 出し方
 
-`grep -rn REPLACE_ME deploy/` で一覧が出ます。
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
-| ファイル | 項目 | 調べ方・例 |
-| --- | --- | --- |
-| [kustomization.yaml](deploy/k8s/kustomization.yaml) | イメージの置き場所(`images.newName` / `newTag`) | CI は `ghcr.io/<owner>/<repo>` に `sha-xxxxxxx` と `latest` のタグで push する |
-| [ingress.yaml](deploy/k8s/ingress.yaml) | Ingress のクラス(`ingressClassName`) | `kubectl get ingressclass` |
-| [ingress.yaml](deploy/k8s/ingress.yaml) | cert-manager の Issuer(注釈) | `kubectl get clusterissuer`。使わないなら注釈と `tls` を消す |
-| [pvc.yaml](deploy/k8s/pvc.yaml) | StorageClass(`storageClassName`) | `kubectl get storageclass`。行を消すと既定のものを使う |
-| [deployment.yaml](deploy/k8s/deployment.yaml) | `TRUST_PROXY_HOPS`(今は `1`) | アプリの手前のプロキシの段数。Ingress のコントローラーだけなら 1。その前にロードバランサーや CDN が `X-Forwarded-For` を足すなら、その分を足す |
+1. CI([image.yml](.github/workflows/image.yml))がイメージに `v0.1.0` を付けて ghcr.io へ push
+2. ArgoCD Image Updater が最新の `vX.Y.Z` を拾い、[kustomization.yaml](deploy/kustomization.yaml) を書き換えて Git に commit
+3. ArgoCD が同期する
 
-ghcr.io のイメージが非公開のままなら、クラスターから pull するための `imagePullSecrets` も要ります。
+Image Updater が入っていない場合は、`kustomization.yaml` の `newTag` を手で書き換えて push すれば同じ結果になります。
+
+**中身が入れ替わるタグは使わない。** CI は毎回 `sha-<短いSHA>` を付け、`vX.Y.Z` はそのタグを打ったときだけ付けます。ブランチ名や `latest` は付けません。PR ではビルドと起動の確認だけをして、公開はしません。
+
+### 戻すとき
+
+`kustomization.yaml` の `newTag` を前の版に戻して push します。Image Updater は「最新の」`vX.Y.Z` を追うので、壊れた版を出したまま戻すと書き戻されることがあります。そのときは直した版を新しいタグ(`v0.1.1` など)で打ちます。
+
+SQLite の中身(いいねの数)は PVC にあり、イメージを戻しても戻りません。
+
+### 初回
+
+1. **`TRUSTED_PROXIES` を確かめる。** Traefik の Pod が属する CIDR を [configmap.yaml](deploy/configmap.yaml) に入れます。MicroK8s の既定は `10.1.0.0/16`(Calico)で、HoshID と同じ値を入れてあります。
+
+   ```bash
+   kubectl get pod -A -l app.kubernetes.io/name=traefik -o wide
+   ```
+
+   接続元がこの範囲のときだけ `X-Forwarded-For` を読みます([client-ip.ts](server/src/client-ip.ts))。ずれていると全員が Traefik の IP に見え、いいねの連打の制限が全員で 1 つになります(**気づける形では壊れない**)。
+2. **最初のタグを打つ。** `kustomization.yaml` は `v0.1.0` を指しているので、`v0.1.0` を打ってイメージを作っておきます。
+3. **ghcr.io のパッケージを公開にする**(または `imagePullSecrets` を足す)。非公開のままだと、クラスタから pull できません。
+4. **Application を手で適用する。**
+
+   ```bash
+   kubectl apply -f deploy/argocd-application.yaml
+   ```
+
+   自動で同期しますが、`selfHeal` は付けていません(障害対応で手作業した変更を勝手に戻さないため)。
+
+### 未完了
+
+- [ ] **DB を PostgreSQL に移す(PR2)。** `postgres:17-alpine` の StatefulSet、マイグレーションの Job(Sync フック、sync-wave 1。アプリは 2)、`pg_dump` の CronJob、SealedSecret。移したら SQLite 用の [pvc.yaml](deploy/pvc.yaml) を消し、`replicas` と `strategy: Recreate` を見直す
+- [ ] **`TRUSTED_PROXIES` の答え合わせ。** デプロイ後、いいねを 2 つの回線から押して、片方が 429 にならないことを確かめる
+
+### 構成
+
+| ファイル | 中身 |
+|---|---|
+| `deployment.yaml` | アプリ本体。SQLite なので `replicas: 1`・`Recreate`。startup と readiness は `/healthz`、liveness は TCP |
+| `pvc.yaml` | SQLite(`/data`)。StorageClass はクラスタの既定。PR2 で消す |
+| `configmap.yaml` | 秘密でない設定(`TRUSTED_PROXIES`) |
+| `service.yaml` | ClusterIP、80 → 3927 |
+| `ingress.yaml` | Traefik。`lab.skyia.jp` |
+| `kustomization.yaml` | `images` で `vX.Y.Z` に差し替える。Image Updater が書き換える |
+| `argocd-application.yaml` | ArgoCD に手で適用する。`resources` には入れない |
 
 ## CI(GitHub Actions)
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml)
-
-- PR ごと: 型チェック・lint・テスト・web のビルド・Docker のビルド(push はしない)
-- main に入ったとき: 上に加えて、イメージを ghcr.io に push する。使う秘密の値は `GITHUB_TOKEN` だけ
+- [ci.yml](.github/workflows/ci.yml): PR と main で、型チェック・lint・テスト・web のビルド
+- [image.yml](.github/workflows/image.yml): PR ではビルドと起動の確認だけ。main と `vX.Y.Z` のタグでは ghcr.io に公開する。使う秘密の値は `GITHUB_TOKEN` だけ
 
 ## 選んだライブラリ
 
