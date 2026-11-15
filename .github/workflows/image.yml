@@ -76,30 +76,45 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: イメージをビルド
+      # 2 つのイメージ(アプリと migrator)を、同じ Dockerfile の別の target から作る
+      - name: イメージをビルド(アプリ)
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: app
           load: true
           push: false
           tags: ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.sha_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 本番の securityContext と同じ縛り（uid 1000、ルートは読み取り専用、
-      # capabilities なし、書けるのは /tmp と /data だけ）で立ち上げ、
-      # /healthz が 200 を返すことを確かめる。
+      - name: イメージをビルド(migrator)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: migrator
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_BASE }}-migrator:${{ steps.meta.outputs.sha_tag }}
+          cache-from: type=gha
+
+      # 本番と同じ縛り(uid 1000、ルートは読み取り専用、capabilities なし、書けるのは /tmp だけ)で、
+      # migrator でマイグレーションを当て、アプリを立ち上げて /healthz と /api/me が返ることを確かめる。
       - name: 起動できることを確かめる
         run: |
           set -eu
-          docker run -d --name smoke -p 3927:3927 \
-            --user 1000:1000 --read-only --cap-drop ALL \
-            --security-opt no-new-privileges \
-            --tmpfs /tmp --tmpfs /data:uid=1000,gid=1000 \
-            -e TRUSTED_PROXIES=10.1.0.0/16 \
-            "${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.sha_tag }}"
+          docker network create smoke
+          docker run -d --name db --network smoke -e POSTGRES_DB=lab -e POSTGRES_USER=lab -e POSTGRES_PASSWORD=lab postgres:17-alpine
+          for i in $(seq 1 30); do docker exec db pg_isready -U lab -d lab && break; sleep 1; done
+          URL=postgres://lab:lab@db:5432/lab
+          docker run --rm --network smoke --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL -e DATABASE_URL=$URL "${{ env.IMAGE_BASE }}-migrator:${{ steps.meta.outputs.sha_tag }}"
+          docker run -d --name smoke --network smoke -p 3927:3927 --user 1000:1000 --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp -e DATABASE_URL=$URL -e LAB_BASE_URL=http://localhost:3927 -e BETTER_AUTH_SECRET=smoke-test-only-0123456789abcdefghijklmnop -e TRUSTED_PROXIES=10.1.0.0/16 "${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.sha_tag }}"
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:3927/healthz; then echo; docker rm -f smoke; exit 0; fi
+            if curl -fsS http://127.0.0.1:3927/healthz; then
+              echo
+              test "$(curl -fsS http://127.0.0.1:3927/api/me)" = "null"
+              exit 0
+            fi
             sleep 1
           done
           docker logs smoke
@@ -111,13 +126,16 @@ jobs:
           set -eu
           SHA_TAG="${{ steps.meta.outputs.sha_tag }}"
           VERSION_TAG="${{ steps.meta.outputs.version_tag }}"
-          IMAGE="${{ env.IMAGE_BASE }}"
 
-          docker push "${IMAGE}:${SHA_TAG}"
-          if [ -n "${VERSION_TAG}" ]; then
-            docker tag "${IMAGE}:${SHA_TAG}" "${IMAGE}:${VERSION_TAG}"
-            docker push "${IMAGE}:${VERSION_TAG}"
-          fi
+          # **2 つのイメージには必ず同じタグを付ける。** ずれると、まだない列を前提にしたコードが動く
+          for suffix in "" "-migrator"; do
+            IMAGE="${{ env.IMAGE_BASE }}${suffix}"
+            docker push "${IMAGE}:${SHA_TAG}"
+            if [ -n "${VERSION_TAG}" ]; then
+              docker tag "${IMAGE}:${SHA_TAG}" "${IMAGE}:${VERSION_TAG}"
+              docker push "${IMAGE}:${VERSION_TAG}"
+            fi
+          done
 
       - name: ArgoCD に指定するタグ
         if: github.event_name != 'pull_request'
@@ -125,6 +143,7 @@ jobs:
           echo "### イメージ" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.sha_tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ env.IMAGE_BASE }}-migrator:${{ steps.meta.outputs.sha_tag }}" >> "$GITHUB_STEP_SUMMARY"
           if [ -n "${{ steps.meta.outputs.version_tag }}" ]; then
             echo "${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.version_tag }}" >> "$GITHUB_STEP_SUMMARY"
           fi

@@ -1,0 +1,88 @@
+# DB の日次バックアップ(HoshID と同じ形)。
+#
+# **これだけでは足りない。** ダンプはクラスタ内の PVC に置かれるので、
+# クラスタごと失えば一緒に消える。外へ持ち出す手段を足すまでは
+# 「Pod や PVC が壊れたとき」にしか効かない。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+  namespace: lab
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: lab
+spec:
+  # 毎日 03:45(クラスタのタイムゾーン)。HoshID(03:15)とずらす
+  schedule: "45 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: dump
+              # **サーバと同じメジャーバージョンを使う。** 古い pg_dump で
+              # 新しいサーバを取るとエラーで落ちる。
+              image: postgres:17-alpine
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  FILE="/backups/lab-$(date +%Y%m%d-%H%M%S).dump"
+
+                  # custom 形式。並列復元ができ、必要なテーブルだけ取り出せる。
+                  pg_dump --format=custom --no-owner --no-privileges \
+                    --file="$FILE" "$DATABASE_URL"
+
+                  # **空のダンプを成功として残さない。**
+                  if [ ! -s "$FILE" ]; then
+                    echo "ダンプが空です" >&2
+                    exit 1
+                  fi
+                  echo "書き出しました: $FILE ($(du -h "$FILE" | cut -f1))"
+
+                  # 7 世代より古いものを消す。
+                  find /backups -name 'lab-*.dump' -mtime +7 -delete
+                  ls -lh /backups
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: lab-secrets
+                      key: DATABASE_URL
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: postgres-backups

@@ -1,10 +1,11 @@
 node_modules/
 dist/
-# 開発中の SQLite(bun run dev で作られる)
-.data/
-*.db
-*.db-wal
-*.db-shm
 .env
 .env.*
+!.env.example
 .DS_Store
+# Prisma のクライアント(bun install の postinstall で作る)
+server/src/generated/
+# 骨組みのころの SQLite
+.data/
+deploy/secret.yaml

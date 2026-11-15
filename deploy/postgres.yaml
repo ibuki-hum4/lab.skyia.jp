@@ -1,0 +1,113 @@
+# PostgreSQL。オペレータ(CloudNativePG など)を使わず StatefulSet で立てる(HoshID と同じ形)。
+#
+# **バックアップは backup-cronjob.yaml。** この構成は Pod と PVC があるだけで、
+# PVC が飛べば全部消える。
+#
+# **replicas は 1 のまま。** Postgres は複製の調停を自分でやらないので、
+# 数を増やすとデータが割れる。
+#
+# **ロケールは既定(en_US.utf8)のまま。** C にすると pg_trgm が日本語から
+# トライグラムを作れなくなる(PR #2 で確かめた)。
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: lab
+spec:
+  # StatefulSet が安定した DNS 名を持つための headless Service。
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: lab
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      securityContext:
+        # postgres イメージの既定ユーザー。PVC の所有者を合わせる。
+        runAsUser: 70 # alpine 版の postgres ユーザーは 70(Debian 版は 999)
+        runAsGroup: 70
+        fsGroup: 70
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+
+          env:
+            - name: POSTGRES_DB
+              value: lab
+            - name: POSTGRES_USER
+              value: lab
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lab-secrets
+                  key: POSTGRES_PASSWORD
+            # 既定の /var/lib/postgresql/data をそのまま使うと、PVC の
+            # lost+found と衝突して初期化に失敗する。1 段下げる。
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            # 読み取り専用ではないが、ソケットの置き場所は明示しておく
+            - name: run
+              mountPath: /var/run/postgresql
+
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "lab", "-d", "lab"]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "lab", "-d", "lab"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+
+      volumes:
+        - name: run
+          emptyDir: {}
+
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # StorageClass は指定しない(クラスタの既定)
+        resources:
+          requests:
+            storage: 5Gi

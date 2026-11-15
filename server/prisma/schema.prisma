@@ -1,0 +1,126 @@
+// スキーマの正は prisma/migrations/*/migration.sql。ここはクライアントの型を作るための写し。
+// モデル名と項目名は Better Auth の名前(user・session・account・verification、camelCase)にして、
+// @@map と @map で DB のテーブル名と列名(snake_case)に付け替える。
+
+generator client {
+  // Prisma 7 の TypeScript の生成器。node_modules の外(src/generated)に作る。
+  // server は bun build で 1 つのファイルにまとめるので、エンジンのバイナリを持たないこちらにする
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  // 接続情報は prisma.config.ts(Prisma 7 から url はここに書けない)
+  provider = "postgresql"
+}
+
+model user {
+  id            String    @id
+  /// @ のハンドル。初回のログインのあと /welcome で決めるので、それまでは null
+  handle        String?
+  /// HoshID の表示名(Better Auth の name)
+  name          String    @default("") @map("display_name")
+  bio           String    @default("")
+  /// member / moderator / admin
+  role          String    @default("member")
+  suspendedAt   DateTime? @map("suspended_at") @db.Timestamptz
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz
+  email         String    @unique
+  emailVerified Boolean   @default(false) @map("email_verified")
+  image         String?
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  accounts  account[]
+  sessions  session[]
+  following follow[] @relation("follower")
+  followers follow[] @relation("followee")
+  blocking  block[]  @relation("blocker")
+  blockedBy block[]  @relation("blocked")
+
+  @@map("users")
+}
+
+model account {
+  id                    String    @id
+  userId                String    @map("user_id")
+  providerId            String    @map("provider_id")
+  accountId             String    @map("account_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  user                  user      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model session {
+  id        String   @id
+  token     String   @unique
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  /// 使うたびに Better Auth が延ばす(updatedAt)
+  updatedAt DateTime @default(now()) @updatedAt @map("last_seen_at") @db.Timestamptz
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+/// /auth/login から /auth/callback までの間だけ持つもの(state のハッシュ、nonce・PKCE の verifier などの JSON)
+model verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([identifier])
+  @@index([expiresAt])
+  @@map("auth_flows")
+}
+
+model follow {
+  followerId String   @map("follower_id")
+  followeeId String   @map("followee_id")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  follower   user     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followee   user     @relation("followee", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followeeId])
+  @@index([followeeId])
+  @@map("follows")
+}
+
+model block {
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  blocker   user     @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   user     @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("blocks")
+}
+
+/// 骨組みのいいね。記事の作りを変える次の PR で見直す
+model postLike {
+  slug  String @id
+  count Int    @default(0)
+
+  @@map("post_likes")
+}

@@ -14,6 +14,23 @@ jobs:
   check:
     name: 型チェック・lint・テスト・web のビルド
     runs-on: ubuntu-latest
+    # DB を使うテストは、ここで立てた PostgreSQL(本番と同じ postgres:17-alpine)で動かす
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: lab_test
+          POSTGRES_USER: lab
+          POSTGRES_PASSWORD: lab
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lab -d lab_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://lab:lab@localhost:5432/lab_test
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2

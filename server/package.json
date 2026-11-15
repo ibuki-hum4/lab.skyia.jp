@@ -7,20 +7,32 @@
     "./types": "./src/types.ts"
   },
   "scripts": {
-    "dev": "LAB_DB_PATH=../.data/lab.db bun --watch src/main.ts",
+    "dev": "bun --env-file=../.env --watch src/main.ts",
     "start": "bun src/main.ts",
+    "migrate": "bun --env-file=../.env prisma migrate deploy",
+    "dev:oidc": "bun scripts/fake-oidc.ts",
     "build": "bun build src/main.ts --target=bun --outfile=dist/server.js",
     "test": "bun test",
-    "typecheck": "tsc -p ."
+    "typecheck": "prisma generate && tsc -p .",
+    "generate": "prisma generate",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@senrijs/senri": "^0.3.1",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "@senrijs/senri": "^0.3.2",
+    "better-auth": "^1.7.25",
     "markdown-it": "^15.0.3",
+    "pg": "^8.23.1",
     "shiki": "^4.6.0"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",
     "@types/markdown-it": "^14.2.0",
+    "@types/pg": "^8.23.1",
+    "dotenv": "^18.0.10",
+    "jose": "^6.2.17",
+    "prisma": "7.10.0",
     "typescript": "~6.0.3"
   }
 }

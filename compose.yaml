@@ -1,0 +1,30 @@
+# 開発用の PostgreSQL。本番(deploy/postgres.yaml)と同じ postgres:17-alpine。
+#
+#   podman compose up -d      (Docker なら docker compose up -d)
+#   podman compose down       (データは名前付きボリューム lab-pg に残る。消すなら down -v)
+#
+# lab(開発用)と lab_test(テスト用。bun run test が毎回まっさらにする)の 2 つの DB を作る。
+# 手元だけで使うので、パスワードは決め打ちの "lab"。127.0.0.1 にだけ開ける。
+services:
+  db:
+    image: docker.io/library/postgres:17-alpine
+    # 既定のネットワークを使う。compose が専用のネットワークを作ると、WSL の Podman では
+    # nftables のエラーで立ち上がらないことがある(サービスが 1 つなので、専用のものは要らない)
+    network_mode: bridge
+    environment:
+      POSTGRES_DB: lab
+      POSTGRES_USER: lab
+      POSTGRES_PASSWORD: lab
+    ports:
+      - "127.0.0.1:${LAB_PG_PORT:-5432}:5432"
+    volumes:
+      - lab-pg:/var/lib/postgresql/data
+      - ./dev/initdb:/docker-entrypoint-initdb.d:ro,Z
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "lab", "-d", "lab"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  lab-pg:

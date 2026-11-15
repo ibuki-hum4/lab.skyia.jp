@@ -3,14 +3,18 @@ kind: Deployment
 metadata:
   name: lab
   namespace: lab
+  annotations:
+    # マイグレーション(wave 1)が終わってから起動する。
+    argocd.argoproj.io/sync-wave: "2"
 spec:
-  # **SQLite なので 1 つだけ。** 2 つの Pod から同じファイルに書くと壊れる。
+  # 1 つのまま。いいねの連打の制限(rateLimit)は Pod のメモリーで数えるので、
+  # 増やすとその分だけ制限がゆるくなる。セッションは DB にあるので、増やしても切れない。
   replicas: 1
-  # 古い Pod を止めてから新しい Pod を立てる。RWO の PVC は 2 つの Pod から
-  # 同時につなげないので、RollingUpdate だと新しい Pod が起動できずに止まる。
-  # 更新のときに数秒止まるのは受け入れる（PR2 で PostgreSQL に移したら戻す）。
+  # DB に移ったので、新しい Pod が立ってから古い Pod を止める(止まらずに入れ替わる)
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: lab
@@ -25,10 +29,6 @@ spec:
         # イメージの bun ユーザー（oven/bun の uid/gid 1000）。
         runAsUser: 1000
         runAsGroup: 1000
-        # PVC の中に bun ユーザーが書けるようにする（HoshID のアプリは PVC を
-        # 持たないので、ここだけ HoshID と違う）。
-        fsGroup: 1000
-        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -45,6 +45,22 @@ spec:
           envFrom:
             - configMapRef:
                 name: lab-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: lab-secrets
+                  key: DATABASE_URL
+            - name: BETTER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: lab-secrets
+                  key: BETTER_AUTH_SECRET
+            - name: HOSHID_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: lab-secrets
+                  key: HOSHID_CLIENT_SECRET
 
           # 起動時に content/ の Markdown を全部 HTML にする（shiki の読み込みが
           # 重い）。startup probe で余裕を持たせる。
@@ -83,16 +99,10 @@ spec:
               drop: ["ALL"]
 
           volumeMounts:
-            # SQLite。PR2 で消す。
-            - name: data
-              mountPath: /data
             # ルートを読み取り専用にしているので、一時ファイルの書き場所を与える。
             - name: tmp
               mountPath: /tmp
 
       volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: lab-data
         - name: tmp
           emptyDir: {}

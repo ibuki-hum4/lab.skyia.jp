@@ -12,8 +12,13 @@
     "dev:web": "bun run --cwd web dev",
     "build": "bun run --filter @lab/web build",
     "start": "bun run --filter @lab/server start",
-    "test": "bun run --filter @lab/server test",
+    "test": "bun run --filter '@lab/*' test",
     "typecheck": "bun run --filter '@lab/*' typecheck",
-    "lint": "bun run --filter @lab/web lint"
+    "lint": "bun run --filter @lab/web lint",
+    "dev:oidc": "bun run --cwd server dev:oidc",
+    "migrate": "bun run --cwd server migrate"
+  },
+  "dependencies": {
+    "@senrijs/senri": "^0.3.2"
   }
 }
