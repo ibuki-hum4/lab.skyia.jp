@@ -20,7 +20,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
-    "@senrijs/senri": "^0.3.1",
+    "@senrijs/senri": "^0.3.2",
     "better-auth": "^1.7.25",
     "markdown-it": "^15.0.3",
     "pg": "^8.23.1",
