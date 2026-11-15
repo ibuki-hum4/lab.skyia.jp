@@ -26,7 +26,7 @@ data:
 
   # HoshID(OIDC)。client_secret は Secret 側
   HOSHID_ISSUER: "https://hoshid.skyia.jp/api/auth"
-  HOSHID_CLIENT_ID: "REPLACE_ME_after_registering_on_hoshid"
+  HOSHID_CLIENT_ID: "tNoVHYlokQjDewEwXMXzZoeWjkOIKhfG"
   # HoshID に登録するリダイレクト URI。ログアウトのあとの戻り先は https://lab.skyia.jp/
   HOSHID_REDIRECT_URI: "https://lab.skyia.jp/auth/callback/hoshid"
 
