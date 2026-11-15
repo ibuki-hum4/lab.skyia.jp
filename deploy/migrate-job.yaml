@@ -1,0 +1,63 @@
+# マイグレーション(`prisma migrate deploy`)。
+#
+# **アプリより先に、必ず終わってから**流す。スキーマが古いまま新しいコードを
+# 立ち上げると「一部の画面だけ 500」という分かりにくい壊れ方をする。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lab-migrate
+  namespace: lab
+  annotations:
+    # **PreSync にしない。** あれは通常リソースより前に走るので、初回の同期で
+    # Secret も PostgreSQL もまだ無く落ちる(HoshID で実際に踏んだ)。
+    #
+    # Sync フック + sync-wave なら、通常リソースと同じ流れの中で順序を付けられる。
+    #   wave 0  ConfigMap / SealedSecret / PostgreSQL
+    #   wave 1  このジョブ(DB が Healthy になってから)
+    #   wave 2  アプリ本体
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "1"
+    # 前回の Job を消してから作る。Job の spec は変更できないので、
+    # 消さずに再適用すると immutable のエラーになる。
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        # 数値で指定する。名前だと kubelet が解決できず起動しない。
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          # アプリとは別のイメージ(Prisma の CLI とマイグレーションを含む)。
+          # **タグはアプリと必ず揃える。** kustomization.yaml で両方まとめて指定。
+          image: ghcr.io/ibuki-hum4/lab.skyia.jp-migrator:v0.2.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: lab-secrets
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

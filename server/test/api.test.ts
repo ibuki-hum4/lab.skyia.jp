@@ -1,16 +1,23 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { getIp } from "@senrijs/senri/ip";
 import { request, testClient } from "@senrijs/senri/testing";
 import { join } from "node:path";
 import { createLabApp } from "../src/app";
-import { openLikeStore } from "../src/likes";
+import { openDb } from "../src/db";
 import type { Api } from "../src/routes";
+import { BASE, TEST_DATABASE_URL, resetDb, truncateAll } from "./helpers";
 
-/** テスト用のアプリ。いいねはメモリー上の SQLite に入れる */
+const db = openDb(TEST_DATABASE_URL);
+beforeAll(() => resetDb());
+afterAll(() => db.$disconnect());
+
+/** テスト用のアプリ。いいねはテスト用の PostgreSQL に入れる(毎回空にする) */
 async function setup(contentDir = join(import.meta.dir, "fixtures")) {
+    await truncateAll(db);
     const { app } = await createLabApp({
+        config: { baseUrl: BASE, databaseUrl: TEST_DATABASE_URL, authSecret: "x".repeat(40), hoshid: null },
+        db,
         contentDir,
-        likes: openLikeStore(":memory:"),
         clientIp: getIp,
         likeLimit: { windowMs: 60_000, limit: 2 },
     });

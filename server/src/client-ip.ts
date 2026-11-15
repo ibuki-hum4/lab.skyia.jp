@@ -13,10 +13,7 @@ import { getIp, trustProxy } from "@senrijs/senri/ip";
  * プライベート帯を丸ごと(10.0.0.0/8 など)書かないこと。利用者がそこに含まれると、詐称されたヘッダーを信じることになる。
  */
 export function clientIpFromEnv(value: string | undefined): (c: Context) => string | null {
-    const proxies = (value ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s !== "");
+    const proxies = parseProxies(value);
     if (proxies.length === 0) return getIp;
     try {
         return trustProxy({ proxies });
@@ -24,3 +21,10 @@ export function clientIpFromEnv(value: string | undefined): (c: Context) => stri
         throw new Error(`TRUSTED_PROXIES に IP か CIDR でないものがあります: ${value}`);
     }
 }
+
+/** カンマ区切りを配列に(空は捨てる) */
+export const parseProxies = (value: string | undefined) =>
+    (value ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s !== "");

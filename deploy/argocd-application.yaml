@@ -1,5 +1,5 @@
 # ArgoCD へ登録する Application。
-# これ自体はクラスタに手で適用する（`kubectl apply -f deploy/argocd-application.yaml`）。
+# これ自体はクラスタに手で入れる(ArgoCD の UI の NEW APP → EDIT AS YAML に、このファイルを貼る)。
 # kustomization.yaml の resources には入れない。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -19,9 +19,12 @@ metadata:
     # **allow-tags で vX.Y.Z だけに絞る。** 絞らないと sha- タグを新しい版と
     # みなして拾い、コミットのたびに本番が動く。
     argocd-image-updater.argoproj.io/image-list: >-
-      app=ghcr.io/ibuki-hum4/lab.skyia.jp
+      app=ghcr.io/ibuki-hum4/lab.skyia.jp,
+      migrator=ghcr.io/ibuki-hum4/lab.skyia.jp-migrator
     argocd-image-updater.argoproj.io/app.update-strategy: semver
     argocd-image-updater.argoproj.io/app.allow-tags: regexp:^v\d+\.\d+\.\d+$
+    argocd-image-updater.argoproj.io/migrator.update-strategy: semver
+    argocd-image-updater.argoproj.io/migrator.allow-tags: regexp:^v\d+\.\d+\.\d+$
 
     # Git に書き戻す。**annotation に書く方式（argocd）は使わない。**
     # あれだと「いま何が動いているか」がクラスタの状態にしか無く、
@@ -49,3 +52,11 @@ spec:
       selfHeal: false
     syncOptions:
       - CreateNamespace=true
+
+  # マイグレーションの Job は Sync フックで、毎回作り直される。
+  # 完了済みの Job を差分として扱わせない。
+  ignoreDifferences:
+    - group: batch
+      kind: Job
+      jsonPointers:
+        - /spec/template/metadata/labels

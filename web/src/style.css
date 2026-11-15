@@ -3,3 +3,67 @@
 
 /* 記事の本文(サーバーが作った HTML)は `class="prose"` で整える */
 @plugin "@tailwindcss/typography";
+
+/*
+ * 「方眼紙の実験ノート」のテーマ。ここに書いた名前が、そのままクラス名になる。
+ *   色:  bg-paper / text-ink / border-rule / text-fail …
+ *   字:  font-sans(IBM Plex Sans JP)/ font-mono(JetBrains Mono)
+ *   影:  shadow-block(強調する箱。ずらした墨色の影)
+ * 角は丸めない(rounded-* は使わない。下で radius を全部 0 にしている)
+ */
+@theme {
+  --color-ink: #16181b; /* 墨 */
+  --color-paper: #f4f5f3; /* 紙 */
+  --color-grid: #e2e5e2; /* 方眼の線 */
+  --color-accent: #1f3fa8; /* 青インク(差し色) */
+  --color-muted: #5b6168; /* 薄い文字 */
+  --color-rule: #c9cdd1; /* 区切り線 */
+  --color-pass: #1b6e45;
+  --color-fail: #b3261e;
+  --color-watch: #8a5a00; /* WATCH は破線で使う */
+  --color-sticky: #f6e58d; /* 付箋 */
+  --color-sticky-fold: #e2cf6a; /* 付箋の折れた角 */
+
+  --font-sans: "IBM Plex Sans JP", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-*: initial;
+  --shadow-block: 6px 6px 0 var(--color-ink);
+  --shadow-block-lg: 8px 8px 0 var(--color-ink);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+    /* 24px の方眼を敷く */
+    background-image:
+      linear-gradient(var(--color-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    border-radius: 0;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+/* 動きを減らす設定のときは、アニメーションと移り変わりを止める(付箋やスタンプの傾きは動きではないので残る) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

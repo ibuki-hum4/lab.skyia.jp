@@ -22,6 +22,7 @@ export default defineConfig({
         proxy: {
             "/api": API,
             "/healthz": API,
+            "/auth": API,
         },
     },
     build: {

@@ -1,4 +1,4 @@
-# 秘密でない設定。この PR の時点では、秘密の値は要らない。
+# 秘密でない設定。秘密は SealedSecret(sealed-secret.yaml)へ。
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -20,3 +20,20 @@ data:
   # プライベート帯を丸ごと書かないこと。そこに利用者が含まれると、
   # 詐称されたヘッダを信じることになって設定の意味が消える。
   TRUSTED_PROXIES: "10.1.0.0/16"
+
+  # このサイトの URL。Better Auth の baseURL(Cookie・リダイレクト先の組み立て)
+  LAB_BASE_URL: "https://lab.skyia.jp"
+
+  # HoshID(OIDC)。client_secret は Secret 側
+  HOSHID_ISSUER: "https://hoshid.skyia.jp/api/auth"
+  HOSHID_CLIENT_ID: "REPLACE_ME_after_registering_on_hoshid"
+  # HoshID に登録するリダイレクト URI。ログアウトのあとの戻り先は https://lab.skyia.jp/
+  HOSHID_REDIRECT_URI: "https://lab.skyia.jp/auth/callback/hoshid"
+
+  # ロールが入るクレームの名前と、値 → ロール(member / moderator / admin)。
+  # **HoshID のクレームが決まったら合わせる。** クレームがなければ全員 member になる
+  HOSHID_ROLES_CLAIM: "roles"
+  HOSHID_ROLE_MAP: "一般:member,役員:moderator,管理者:admin"
+  # 表示名とニックネームのクレームの名前
+  HOSHID_DISPLAY_NAME_CLAIM: "name"
+  HOSHID_NICKNAME_CLAIM: "nickname"
