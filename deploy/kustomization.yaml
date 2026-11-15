@@ -1,0 +1,23 @@
+# lab.skyia.jp のマニフェスト。`kubectl kustomize deploy` で中身を確かめられる。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: lab
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  # SQLite 用。PR2 で PostgreSQL に移したら消す。
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+# **ここは ArgoCD Image Updater が書き換える。** 最新の vX.Y.Z を見つけると
+# Git に commit する（設定は argocd-application.yaml の annotation）。
+#
+# 手で変えてもよいが、その場合も vX.Y.Z を指すこと。ブランチ名や latest を
+# 指すと、同じタグの中身が入れ替わって追えなくなる。
+images:
+  - name: ghcr.io/ibuki-hum4/lab.skyia.jp
+    newTag: v0.1.0

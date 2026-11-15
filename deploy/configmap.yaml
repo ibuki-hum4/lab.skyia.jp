@@ -1,0 +1,22 @@
+# 秘密でない設定。この PR の時点では、秘密の値は要らない。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lab-config
+  namespace: lab
+data:
+  NODE_ENV: "production"
+
+  # **Traefik の Pod が属する CIDR。** MicroK8s の既定の Pod CIDR
+  # （Calico の 10.1.0.0/16）。HoshID の TRUSTED_PROXIES と同じ値。
+  # k3s は 10.42.0.0/16 で別物なので、移すときは必ず確認する。
+  #
+  #   kubectl get pod -A -l app.kubernetes.io/name=traefik -o wide
+  #
+  # 接続元がこの範囲のときだけ X-Forwarded-For を読む（server/src/client-ip.ts）。
+  # ずれると全員が Traefik の IP に見え、いいねの連打の制限（同じ人・同じ記事は
+  # 60 秒に 1 回）が全員で 1 つのバケツになる。**気づける形では壊れない。**
+  #
+  # プライベート帯を丸ごと書かないこと。そこに利用者が含まれると、
+  # 詐称されたヘッダを信じることになって設定の意味が消える。
+  TRUSTED_PROXIES: "10.1.0.0/16"
