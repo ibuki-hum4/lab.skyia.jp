@@ -21,7 +21,8 @@ const isMe = computed(() => !!me.value?.handle && me.value.handle === profile.va
 useTitle(computed(() => (profile.value ? `${profile.value.displayName}の実験ノート - skyia/lab` : "skyia/lab")));
 
 async function load() {
-  state.value = "loading";
+  // 読み直し(ログインの状態が変わったとき・ブロックしたとき)のあいだは、前の中身を出しておく
+  if (profile.value?.handle !== props.handle) state.value = "loading";
   const res = await api("GET /api/users/:handle", { params: { handle: props.handle } });
   if (res.ok) {
     profile.value = res.data;
