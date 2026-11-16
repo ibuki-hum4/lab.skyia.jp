@@ -26,6 +26,6 @@ resources:
 # コードが動く。CI は両方に同じタグを付けて push する。
 images:
   - name: ghcr.io/ibuki-hum4/lab.skyia.jp
-    newTag: v0.2.1
+    newTag: v0.3.0
   - name: ghcr.io/ibuki-hum4/lab.skyia.jp-migrator
-    newTag: v0.2.1
+    newTag: v0.3.0
