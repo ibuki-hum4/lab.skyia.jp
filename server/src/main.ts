@@ -8,28 +8,23 @@ import { openDb } from "./db";
 
 const env = process.env;
 
-/** Markdown の置き場所(既定はリポジトリの content/) */
-const contentDir = resolve(env.CONTENT_DIR ?? `${import.meta.dir}/../../content`);
 /** ビルド済みの web(既定は web/dist) */
 const publicDir = resolve(env.PUBLIC_DIR ?? `${import.meta.dir}/../../web/dist`);
 
 const config = readConfig(env);
 if (!config.hoshid) console.warn("HoshID の設定がないので、ログインはできません(HOSHID_ISSUER など)");
 
-/** クライアントの IP の取り方。いいねの連打の制限で使う(TRUSTED_PROXIES の意味は client-ip.ts) */
-const clientIp = clientIpFromEnv(env.TRUSTED_PROXIES);
+// TRUSTED_PROXIES の書き間違い(IP でも CIDR でもないもの)は、起動時に止める。値は Better Auth に渡す
+clientIpFromEnv(env.TRUSTED_PROXIES);
 
 // DB にはここではつながない(最初のクエリでつなぐ)。DB が遅れて立ち上がっても、起動は止めない
 const db = openDb(config.databaseUrl);
-const { app, posts } = await createLabApp({
+const { app } = await createLabApp({
     config,
     db,
-    contentDir,
     publicDir,
-    clientIp,
     trustedProxies: parseProxies(env.TRUSTED_PROXIES),
 });
-console.log(`content: ${posts.length} 本を読み込みました (${contentDir})`);
 
 // 期限の切れたセッションとログインの途中の状態を、1 時間ごとに消す
 const sweep = async () => {

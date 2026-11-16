@@ -127,13 +127,6 @@ model block {
   @@map("blocks")
 }
 
-/// 骨組みのいいね。記事の作りを変える次の PR で見直す
-model postLike {
-  slug  String @id
-  count Int    @default(0)
-
-  @@map("post_likes")
-}
 
 /// アイコン画像。users に置くと Better Auth がリクエストのたびに読むので分けている
 model userAvatar {

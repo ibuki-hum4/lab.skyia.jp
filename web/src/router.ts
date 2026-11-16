@@ -28,8 +28,6 @@ export const router = createRouter({
         { path: "/search", name: "search", component: () => import("./views/SearchView.vue") },
         { path: "/members", name: "members", component: () => import("./views/MembersView.vue") },
         { path: "/settings/profile", name: "settings-profile", component: () => import("./views/SettingsProfileView.vue"), meta: { auth: true } },
-        // content/ の記事(以前の記事)
-        { path: "/posts/:slug", name: "post", component: () => import("./views/PostView.vue"), props: true },
         { path: "/about", name: "about", component: () => import("./views/AboutView.vue") },
         { path: "/welcome", name: "welcome", component: () => import("./views/WelcomeView.vue") },
         { path: "/login/error", name: "login-error", component: () => import("./views/LoginErrorView.vue") },

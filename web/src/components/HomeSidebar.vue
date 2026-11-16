@@ -1,27 +1,24 @@
 <script setup lang="ts">
-// ホームの右: 今週の FAIL・タグ・ノートブック(よく書いている人)・以前の記事(content/)
+// ホームの右: 今週の FAIL・タグ・ノートブック(よく書いている人)
 import { onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
-import { api, type Member, type NoteSummary, type PostMeta, type TagCount } from "../api";
+import { api, type Member, type NoteSummary, type TagCount } from "../api";
 import { noteUrl } from "../lib/notes";
 import Avatar from "./Avatar.vue";
 
 const fails = ref<NoteSummary[]>([]);
 const tags = ref<TagCount[]>([]);
 const members = ref<Member[]>([]);
-const posts = ref<PostMeta[]>([]);
 
 async function load() {
-  const [f, t, m, p] = await Promise.all([
+  const [f, t, m] = await Promise.all([
     api("GET /api/notes/fails"),
     api("GET /api/notes/tags"),
     api("GET /api/members", { query: { sort: "active", limit: 5 } }),
-    api("GET /api/posts"),
   ]);
   if (f.ok) fails.value = f.data;
   if (t.ok) tags.value = t.data.slice(0, 16);
   if (m.ok) members.value = m.data.filter((x) => x.noteCount > 0);
-  if (p.ok) posts.value = p.data;
 }
 onMounted(load);
 </script>
@@ -134,25 +131,5 @@ onMounted(load);
       </RouterLink>
     </section>
 
-    <section
-      v-if="posts.length > 0"
-      aria-labelledby="archive-title"
-      class="flex flex-col gap-2.5 border border-dashed border-muted bg-white/80 px-5 py-4"
-    >
-      <h2
-        id="archive-title"
-        class="font-mono text-xs font-bold tracking-[0.12em] text-muted"
-      >
-        ARCHIVE / 以前の記事
-      </h2>
-      <RouterLink
-        v-for="p in posts"
-        :key="p.slug"
-        :to="`/posts/${p.slug}`"
-        class="text-sm text-ink hover:text-accent hover:underline"
-      >
-        {{ p.title }}
-      </RouterLink>
-    </section>
   </aside>
 </template>

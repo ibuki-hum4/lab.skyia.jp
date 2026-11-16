@@ -7,7 +7,7 @@ import { normalizeHandle } from "./handle";
 import { parseId } from "./ids";
 import { DEFAULT_RATE_LIMITS, LIMITS, type RateLimitRule, type RateLimits } from "./limits";
 import type { Fail, ListFilter, NoteStore, Result } from "./notes";
-import type { LikeStore, LoadedPost, Me, PostMeta, PostType, SocialStore, User } from "./types";
+import type { Me, SocialStore, User } from "./types";
 import type { UserStore } from "./users";
 
 export type RouteDeps = {
@@ -16,22 +16,10 @@ export type RouteDeps = {
     avatars: AvatarStore;
     /** 連打の制限(テストで小さくする)。既定は limits.ts の DEFAULT_RATE_LIMITS */
     rateLimits?: Partial<RateLimits>;
-    /** 新しい順に並んだ記事 */
-    posts: LoadedPost[];
-    likes: LikeStore;
-    /** クライアントの IP を返す関数。プロキシの後ろでは trustProxy() で作ったもの */
-    clientIp: (c: Context) => string | null;
-    /** いいねの連打の制限。既定は「同じ人・同じ記事で 60 秒に 1 回」 */
-    likeLimit?: { windowMs: number; limit: number };
     social: SocialStore;
     /** Cookie からログイン中の人を読んで c.get("user") に入れる(auth.ts の sessionLoader) */
     loadUser: Middleware<{ user: User | null }>;
 };
-
-/** 一覧で返す形(本文や目次は入れない) */
-function toMeta({ slug, title, date, tags, type, status, summary }: LoadedPost): PostMeta {
-    return { slug, title, date, tags, type, ...(status ? { status } : {}), summary };
-}
 
 const notFound = { error: "not_found" } as const;
 
@@ -62,8 +50,7 @@ const badId = (c: Context) => c.json(notFound, 404);
 const perUser = (name: string, rule: RateLimitRule) =>
     rateLimit({ ...rule, key: (c) => `${name}|${(c.get("user") as User | null)?.id ?? ""}` });
 
-export function makeRoutes({ posts, likes, clientIp, likeLimit, social, loadUser, notes, users, avatars, rateLimits }: RouteDeps) {
-    const bySlug = new Map(posts.map((p) => [p.slug, p]));
+export function makeRoutes({ social, loadUser, notes, users, avatars, rateLimits }: RouteDeps) {
     const rl = { ...DEFAULT_RATE_LIMITS, ...rateLimits };
     const limitNote = perUser("note", rl.note);
     const limitComment = perUser("comment", rl.comment);
@@ -87,56 +74,11 @@ export function makeRoutes({ posts, likes, clientIp, likeLimit, social, loadUser
         limit: c.query("limit") ? Number(c.query("limit")) : undefined,
     });
 
-    // 連打を止める。数えるのは「IP + 記事」ごと(別の記事へのいいねは別に数える)
-    const limitLikes = rateLimit({
-        windowMs: likeLimit?.windowMs ?? 60_000,
-        limit: likeLimit?.limit ?? 1,
-        key: (c) => {
-            const ip = clientIp(c);
-            return ip === null ? null : `${ip}|${c.params.slug ?? ""}`;
-        },
-    });
-
     /** 相手が見つからない・自分自身のとき */
     const targetError = (c: Context, result: "not_found" | "self") =>
         result === "not_found" ? c.json(notFound, 404) : c.json({ error: "self" } as const, 400);
 
     return defineRoutes("", { use: [loadUser] })({
-        // 一覧。?type=post|experiment、?tag=xxx、?q=検索語 で絞り込める
-        "GET /api/posts": (_, c): PostMeta[] => {
-            const type = c.query("type") as PostType | undefined;
-            const tag = c.query("tag");
-            const q = c.query("q")?.trim().toLowerCase();
-            return posts
-                .filter((p) => !type || p.type === type)
-                .filter((p) => !tag || p.tags.includes(tag))
-                .filter((p) => !q || p.title.toLowerCase().includes(q) || p.source.toLowerCase().includes(q))
-                .map(toMeta);
-        },
-
-        // 1 本ぶん。本文は HTML、目次といいねの数も付ける
-        "GET /api/posts/:slug": async ({ slug }, c) => {
-            const post = bySlug.get(slug);
-            if (!post) return c.json(notFound, 404);
-            return c.json({ ...toMeta(post), html: post.html, toc: post.toc, likes: await likes.get(slug) });
-        },
-
-        // タグと件数。多い順、同じ数なら名前の順
-        "GET /api/tags": () => {
-            const counts = new Map<string, number>();
-            for (const p of posts) for (const t of p.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
-            return [...counts]
-                .map(([tag, count]) => ({ tag, count }))
-                .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
-        },
-
-        // いいねを 1 増やす。連打は rateLimit で 429 になる
-        // 骨組みのいいねは、ログインなしで押せるまま(次の PR で記事の作りと一緒に見直す)
-        "POST /api/posts/:slug/like": endpoint({ use: [limitLikes] }, async ({ slug }, c) => {
-            if (!bySlug.has(slug)) return c.json(notFound, 404);
-            return c.json({ likes: await likes.increment(slug) });
-        }),
-
         // ---- ログイン中の自分 ----
 
         // ログイン中なら自分のハンドル・表示名・ロール。ログイン前なら null

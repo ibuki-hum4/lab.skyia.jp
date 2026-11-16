@@ -4,7 +4,6 @@
 
 | 場所 | 中身 |
 | --- | --- |
-| [content/](content/) | 記事と実験の Markdown |
 | [server/](server/) | Senri(Bun)。API と、ビルド済みの画面を配る |
 | [web/](web/) | Vue 3 + Vite + TypeScript + vue-router の SPA |
 | [deploy/](deploy/) | k8s のマニフェスト(kustomize)と ArgoCD の Application |
@@ -59,10 +58,6 @@ HoshID(OIDC)でログインします。[Better Auth](https://www.better-auth.com
 
 | ルート | 返すもの |
 | --- | --- |
-| `GET /api/posts` | 一覧(新しい順)。`?type=post\|experiment`、`?tag=xxx`、`?q=検索語` |
-| `GET /api/posts/:slug` | 1 本ぶん。本文の HTML、目次、いいねの数つき |
-| `GET /api/tags` | タグと件数 |
-| `POST /api/posts/:slug/like` | いいねを 1 増やす。同じ人・同じ記事は 60 秒に 1 回まで(ログインは要らない) |
 | `GET /api/me` | ログイン中なら `{ handle, displayName, role }`、ログイン前は `null` |
 | `POST /api/me/handle` | 初回だけハンドルを決める(`{ handle }`)。ログインが要る |
 | `GET /api/me/blocks` | 自分がブロックしている人。本人だけ |
@@ -90,28 +85,10 @@ HoshID(OIDC)でログインします。[Better Auth](https://www.better-auth.com
 
 - 型は [server/src/routes.ts](server/src/routes.ts) の `Api` です。web からは [web/src/api.ts](web/src/api.ts) の `api(...)` で、型付きで呼べます
 
-## 記事の足し方
+## ノートの本文(Markdown)
 
-`content/` に Markdown を置きます。**ファイル名が slug(URL)になります**(英小文字・数字・ハイフン)。
-
-```markdown
----
-title: タイトル
-date: 2026-11-14
-tags: [vue, senri]
-type: post            # post(記事)か experiment(実験)
-status: observing     # 実験のときだけ。success / failure / observing
-summary: 一覧に出す短い説明
----
-
-## 見出し
-
-本文……
-```
-
-- server は起動時に全部読んで HTML にするので、足したら server を立ち上げ直します(`bun dev` なら、server のファイルを保存するか、止めてもう一度)
-- frontmatter の書き間違い(`type` がない、`date` の形が違うなど)は、起動時にエラーで知らせます
-- Markdown の中の生の HTML は通しません(文字のまま出ます)
+- サーバーで HTML にしてから返します(保存のときに作って DB に置く)。生の HTML は通しません(文字のまま出ます)
+- リンクは http・https・mailto とサイトの中だけ。外へのリンクには `rel="noopener noreferrer ugc"` を付けます
 - コードの色付けは、[server/src/markdown.ts](server/src/markdown.ts) に並べた言語だけです。足りなければ、そこに足します
 
 ## Docker
@@ -120,7 +97,7 @@ summary: 一覧に出す短い説明
 
 | target | 中身 |
 | --- | --- |
-| `app`(既定) | `oven/bun:*-alpine` に、1 つにまとめた server(Prisma のクライアント入り)・ビルド済みの web・`content/` |
+| `app`(既定) | `oven/bun:*-alpine` に、1 つにまとめた server(Prisma のクライアント入り)・ビルド済みの web |
 | `migrator` | `oven/bun:*-slim` に、Prisma の CLI とマイグレーション。`bun run migrate`(`prisma migrate deploy`)を流す |
 
 どちらも uid 1000 で動きます。
@@ -187,7 +164,7 @@ Image Updater が入っていない場合は、`kustomization.yaml` の `newTag`
 
 - [ ] **バックアップをクラスタの外へ出す。** 保管先が未定
 - [ ] **HoshID のロールのクレームを確かめる。** いまは `roles` に「一般 / 役員 / 管理者」が入る前提
-- [ ] **`TRUSTED_PROXIES` の答え合わせ。** デプロイ後、いいねを 2 つの回線から押して、片方が 429 にならないことを確かめる
+- [ ] **`TRUSTED_PROXIES` の答え合わせ。** デプロイ後、2 つの回線からログインして、`sessions.ip_address` にそれぞれの IP が入ることを確かめる
 - [ ] **2 文字以下の語の検索。** pg_trgm の GIN は 3 文字以上の語にしか効かない(短い語は全件を見る)。件数が増えて遅くなったら pg_bigm を考える
 
 ### 構成
@@ -210,7 +187,7 @@ Image Updater が入っていない場合は、`kustomization.yaml` の `newTag`
 ## CI(GitHub Actions)
 
 - [ci.yml](.github/workflows/ci.yml): PR と main で、型チェック・lint・テスト(PostgreSQL の service を立てる)・web のビルド
-- [image.yml](.github/workflows/image.yml): PR では 2 つのイメージのビルドと起動の確認(migrator でマイグレーションを当て、アプリの `/healthz` と `/api/me` を見る)だけ。main と `vX.Y.Z` のタグでは ghcr.io に公開する。使う秘密の値は `GITHUB_TOKEN` だけ
+- [image.yml](.github/workflows/image.yml): PR では 2 つのイメージのビルドと起動の確認(migrator でマイグレーションを当て、アプリの `/healthz`・`/api/me`・`/auth/login` を見て、ノートを作って読む)だけ。main と `vX.Y.Z` のタグでは ghcr.io に公開する。使う秘密の値は `GITHUB_TOKEN` だけ
 
 ## 選んだライブラリ
 
@@ -226,7 +203,6 @@ Image Updater が入っていない場合は、`kustomization.yaml` の `newTag`
 
 足さなかったもの:
 
-- **frontmatter:** `gray-matter` などは使わず、Bun に入っている `Bun.YAML.parse` で読む
 - **見出しの id と目次:** `markdown-it-anchor` などは使わず、[markdown.ts](server/src/markdown.ts) で 30 行ほどで作る(日本語の見出しは、そのまま id にする)
 - **バリデーション(Zod など):** クエリは 3 つの文字列だけなので、ハンドラーで読む
 
@@ -256,4 +232,3 @@ TypeScript は 6.0 にしています。7.0 は、`vue-tsc` と `typescript-esli
 | `/new`・`/@handle/EXP-006/edit` | エディタ。`?kind=`、`?replicationOf=<id>`・`?derivedFrom=<id>` で追試・派生として開く |
 | `/tags`・`/tags/:tag`・`/search`・`/members` | タグ・検索・メンバー |
 | `/settings/profile` | 表示名・自己紹介・アイコン |
-| `/posts/:slug` | `content/` の以前の記事 |

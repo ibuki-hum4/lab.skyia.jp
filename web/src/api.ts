@@ -5,7 +5,7 @@ import { client } from "@senrijs/senri/client";
 
 /**
  * 使い方:
- *   const res = await api("GET /api/posts/:slug", { params: { slug } });
+ *   const res = await api("GET /api/users/:handle/notes/:code", { params: { handle, code } });
  *   if (res.ok) res.data.title;        // 型が付く
  *   else if (res.status === 404) ...   // 見つからない
  *
@@ -34,7 +34,6 @@ export const setLike = (id: string, on: boolean) =>
 export type {
     Author,
     CommentItem,
-    ExperimentStatus,
     HandleProblem,
     Lineage,
     LineageNode,
@@ -48,8 +47,6 @@ export type {
     NoteStatus,
     NoteSummary,
     Page,
-    PostMeta,
-    PostType,
     Profile,
     Role,
     StatusChange,

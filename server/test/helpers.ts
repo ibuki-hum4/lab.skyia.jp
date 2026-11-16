@@ -37,7 +37,7 @@ export async function resetDb() {
 
 /** テストのたびに中身を空にする(スキーマは残す) */
 export async function truncateAll(db: Db) {
-    await db.$executeRawUnsafe("TRUNCATE users, accounts, sessions, auth_flows, follows, blocks, post_likes, user_avatars, notes, note_counters, note_status_history, note_links, comments, tags, note_tags, note_likes CASCADE");
+    await db.$executeRawUnsafe("TRUNCATE users, accounts, sessions, auth_flows, follows, blocks, user_avatars, notes, note_counters, note_status_history, note_links, comments, tags, note_tags, note_likes CASCADE");
 }
 
 export type TestEnv = Awaited<ReturnType<typeof createTestEnv>>;
@@ -56,7 +56,7 @@ export async function signIn(env: TestEnv, sub: string, handle: string, roles: s
 }
 
 /** ニセの HoshID と、アプリと、DB をまとめて作る */
-export async function createTestEnv(opts: { contentDir?: string; hoshid?: boolean; rateLimits?: Partial<RateLimits> } = {}) {
+export async function createTestEnv(opts: { hoshid?: boolean; rateLimits?: Partial<RateLimits> } = {}) {
     const fake: FakeOidc | null = opts.hoshid === false ? null : await startFakeOidc({ clientId: "lab-test", clientSecret: "s3cret:with/odd chars" });
     const config: LabConfig = {
         baseUrl: BASE,
@@ -76,9 +76,6 @@ export async function createTestEnv(opts: { contentDir?: string; hoshid?: boolea
     const { app, auth, social } = await createLabApp({
         config,
         db,
-        contentDir: opts.contentDir ?? join(import.meta.dir, "fixtures"),
-        clientIp: () => "127.0.0.1",
-        likeLimit: { windowMs: 60_000, limit: 2 },
         // テストでは、連打の制限は数えるテストだけで効かせる
         rateLimits: opts.rateLimits ?? NO_LIMITS,
     });
