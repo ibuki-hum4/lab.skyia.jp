@@ -43,13 +43,11 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     PORT=3927 \
-    CONTENT_DIR=/app/content \
     PUBLIC_DIR=/app/public
 
-# まとめた server(Prisma のクライアントも中に入る。node_modules は要らない)、ビルド済みの web、記事
+# まとめた server(Prisma のクライアントも中に入る。node_modules は要らない)、ビルド済みの web
 COPY --from=build /app/out/server.js ./server.js
 COPY --from=build /app/web/dist ./public
-COPY content ./content
 
 # root では動かさない(イメージに入っている bun ユーザー、uid 1000)
 USER 1000:1000

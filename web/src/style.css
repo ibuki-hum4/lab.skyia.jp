@@ -67,3 +67,48 @@
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * ノートとコメントの本文(サーバーが作った HTML)。prose に、方眼紙の見た目を足す。
+ * 実験(.counted)は、見出し(h2)の頭に 01・02 … と番号を振る(モックの「01 目的」)
+ */
+@layer components {
+  .note-body {
+    @apply prose max-w-none text-[15px] leading-[1.9] text-[#24282D] sm:text-base;
+    --tw-prose-links: var(--color-accent);
+    --tw-prose-code: var(--color-ink);
+  }
+  .note-body :where(h2) {
+    @apply mt-9 mb-3 text-[22px] font-bold;
+  }
+  .note-body :where(code):not(pre code) {
+    @apply bg-[#EEF0F3] px-1.25 py-px font-mono text-[0.85em] font-normal before:content-none after:content-none;
+  }
+  .note-body :where(pre) {
+    @apply rounded-none font-mono text-[13px] leading-[1.7];
+  }
+  .note-body :where(table) {
+    @apply border border-rule font-mono text-sm;
+  }
+  .note-body :where(th, td) {
+    @apply border border-rule px-3 py-2;
+  }
+  .note-body.counted {
+    counter-reset: section;
+  }
+  .note-body.counted :where(h2) {
+    counter-increment: section;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .note-body.counted :where(h2)::before {
+    content: counter(section, decimal-leading-zero);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--color-accent);
+  }
+  .note-body.compact {
+    @apply text-[15px] leading-[1.8] [&>:first-child]:mt-0 [&>:last-child]:mb-0;
+  }
+}

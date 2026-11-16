@@ -62,8 +62,7 @@ spec:
                   name: lab-secrets
                   key: HOSHID_CLIENT_SECRET
 
-          # 起動時に content/ の Markdown を全部 HTML にする（shiki の読み込みが
-          # 重い）。startup probe で余裕を持たせる。
+          # 起動時に shiki(コードの色付け)を読み込むのが重い。startup probe で余裕を持たせる。
           startupProbe:
             httpGet:
               path: /healthz

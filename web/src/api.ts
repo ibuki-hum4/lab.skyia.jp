@@ -5,7 +5,7 @@ import { client } from "@senrijs/senri/client";
 
 /**
  * 使い方:
- *   const res = await api("GET /api/posts/:slug", { params: { slug } });
+ *   const res = await api("GET /api/users/:handle/notes/:code", { params: { handle, code } });
  *   if (res.ok) res.data.title;        // 型が付く
  *   else if (res.status === 404) ...   // 見つからない
  *
@@ -26,5 +26,32 @@ export const setBlock = (handle: string, on: boolean) =>
 /** ログインの入口(HoshID へ)。ログインのあと next に戻る */
 export const loginUrl = (next: string) => `/auth/login?next=${encodeURIComponent(next)}`;
 
+/** いいねを付ける・外す */
+export const setLike = (id: string, on: boolean) =>
+    api(on ? "POST /api/notes/:id/like" : "DELETE /api/notes/:id/like", { params: { id } });
+
 // 画面で使う型。server の型をそのまま使う
-export type { ExperimentStatus, HandleProblem, Me, PostMeta, PostType, Profile, Role, TocItem, UserSummary } from "@lab/server/types";
+export type {
+    Author,
+    CommentItem,
+    HandleProblem,
+    Lineage,
+    LineageNode,
+    LinkKind,
+    Me,
+    Member,
+    NoteCounts,
+    NoteDetail,
+    NoteKind,
+    NoteRef,
+    NoteStatus,
+    NoteSummary,
+    Page,
+    Profile,
+    Role,
+    StatusChange,
+    TagCount,
+    TocItem,
+    UserSummary,
+} from "@lab/server/types";
+export { LIMITS } from "@lab/server/limits";

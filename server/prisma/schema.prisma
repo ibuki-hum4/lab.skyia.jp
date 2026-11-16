@@ -18,7 +18,7 @@ model user {
   id            String    @id
   /// @ のハンドル。初回のログインのあと /welcome で決めるので、それまでは null
   handle        String?
-  /// HoshID の表示名(Better Auth の name)
+  /// 表示名(Better Auth の name)。初回のログインのときだけ HoshID から取り、あとは本人が /settings/profile で変える
   name          String    @default("") @map("display_name")
   bio           String    @default("")
   /// member / moderator / admin
@@ -29,14 +29,24 @@ model user {
   email         String    @unique
   emailVerified Boolean   @default(false) @map("email_verified")
   image         String?
+  /// アイコン画像の中身のハッシュ(先頭 16 文字)。なければ null
+  avatarHash    String?   @map("avatar_hash")
   updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   accounts  account[]
   sessions  session[]
-  following follow[] @relation("follower")
-  followers follow[] @relation("followee")
-  blocking  block[]  @relation("blocker")
-  blockedBy block[]  @relation("blocked")
+  following follow[]  @relation("follower")
+  followers follow[]  @relation("followee")
+  blocking  block[]   @relation("blocker")
+  blockedBy block[]   @relation("blocked")
+
+  avatar         userAvatar?
+  notes          note[]        @relation("noteAuthor")
+  hiddenNotes    note[]        @relation("noteHider")
+  noteCounters   noteCounter[]
+  comments       comment[]     @relation("commentAuthor")
+  hiddenComments comment[]     @relation("commentHider")
+  likes          noteLike[]
 
   @@map("users")
 }
@@ -117,10 +127,140 @@ model block {
   @@map("blocks")
 }
 
-/// 骨組みのいいね。記事の作りを変える次の PR で見直す
-model postLike {
-  slug  String @id
-  count Int    @default(0)
 
-  @@map("post_likes")
+/// アイコン画像。users に置くと Better Auth がリクエストのたびに読むので分けている
+model userAvatar {
+  userId      String   @id @map("user_id")
+  contentType String   @map("content_type")
+  data        Bytes
+  hash        String
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  user        user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_avatars")
+}
+
+/// 実験・記事・メモ
+model note {
+  id           BigInt    @id @default(autoincrement())
+  authorId     String    @map("author_id")
+  /// experiment / article / memo
+  kind         String
+  /// 作者・種類ごとの通し番号
+  number       Int
+  title        String
+  body         String    @default("")
+  bodyHtml     String    @default("") @map("body_html")
+  toc          Json      @default("[]")
+  excerpt      String    @default("")
+  draft        Boolean   @default(true)
+  /// pass / fail / watch。実験だけ
+  status       String?
+  watchSince   DateTime? @map("watch_since") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz
+  hiddenAt     DateTime? @map("hidden_at") @db.Timestamptz
+  hiddenBy     String?   @map("hidden_by")
+  hiddenReason String?   @map("hidden_reason")
+
+  author        user                @relation("noteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  hider         user?               @relation("noteHider", fields: [hiddenBy], references: [id], onDelete: SetNull)
+  history       noteStatusHistory[]
+  linksAsSource noteLink[]          @relation("linkSource")
+  linkAsTarget  noteLink?           @relation("linkTarget")
+  comments      comment[]
+  tags          noteTag[]
+  likes         noteLike[]
+
+  @@unique([authorId, kind, number])
+  @@index([publishedAt(sort: Desc), id(sort: Desc)])
+  @@map("notes")
+}
+
+model noteCounter {
+  authorId String @map("author_id")
+  kind     String
+  last     Int
+  user     user   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@id([authorId, kind])
+  @@map("note_counters")
+}
+
+model noteStatusHistory {
+  id         BigInt   @id @default(autoincrement())
+  noteId     BigInt   @map("note_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  changedAt  DateTime @default(now()) @map("changed_at") @db.Timestamptz
+  note       note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, changedAt])
+  @@map("note_status_history")
+}
+
+/// 追試(replication)と派生(derivation)
+model noteLink {
+  id        BigInt   @id @default(autoincrement())
+  kind      String
+  sourceId  BigInt   @map("source_id")
+  targetId  BigInt   @unique @map("target_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  source    note     @relation("linkSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    note     @relation("linkTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId, kind])
+  @@map("note_links")
+}
+
+model comment {
+  id           BigInt    @id @default(autoincrement())
+  noteId       BigInt    @map("note_id")
+  authorId     String    @map("author_id")
+  body         String
+  bodyHtml     String    @default("") @map("body_html")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+  hiddenAt     DateTime? @map("hidden_at") @db.Timestamptz
+  hiddenBy     String?   @map("hidden_by")
+  hiddenReason String?   @map("hidden_reason")
+  note         note      @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  author       user      @relation("commentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  hider        user?     @relation("commentHider", fields: [hiddenBy], references: [id], onDelete: SetNull)
+
+  @@index([noteId, createdAt, id])
+  @@map("comments")
+}
+
+model tag {
+  id    BigInt    @id @default(autoincrement())
+  name  String    @unique
+  notes noteTag[]
+
+  @@map("tags")
+}
+
+model noteTag {
+  noteId BigInt @map("note_id")
+  tagId  BigInt @map("tag_id")
+  note   note   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag    tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, tagId])
+  @@index([tagId])
+  @@map("note_tags")
+}
+
+model noteLike {
+  userId    String   @map("user_id")
+  noteId    BigInt   @map("note_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note      note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@id([userId, noteId])
+  @@index([noteId])
+  @@map("note_likes")
 }

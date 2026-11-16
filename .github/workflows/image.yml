@@ -105,7 +105,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       # 本番と同じ縛り(uid 1000、ルートは読み取り専用、capabilities なし、書けるのは /tmp だけ)で、
-      # migrator でマイグレーションを当て、アプリを立ち上げて /healthz・/api/me・/auth/login が返ることを確かめる。
+      # migrator でマイグレーションを当て、アプリを立ち上げて /healthz・/api/me・/auth/login が返ること、ノートを作って読めることを確かめる。
       # ニセの HoshID(127.0.0.1:9999)に届くように、コンテナは host のネットワークで動かす。
       - name: 起動できることを確かめる
         run: |
@@ -131,6 +131,9 @@ jobs:
             http://127.0.0.1:9999/authorize\?*) ;;
             *) fail "/auth/login の行き先が HoshID ではありません: $LOCATION" ;;
           esac
+
+          # ノートを作って読めること(ログイン → ハンドル → 作成 → 1 件・一覧。マイグレーションと pg_trgm も通る)
+          bun server/scripts/smoke-notes.ts http://127.0.0.1:3927 || fail "ノートの作成と表示ができません"
 
           # 落ちていないこと(EROFS などでプロセスが死ぬと、ここで分かる)
           sleep 2

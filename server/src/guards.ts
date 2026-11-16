@@ -19,3 +19,6 @@ export function requireRole(role: Role): Middleware<{ user: User | null }> {
         await next();
     };
 }
+
+/** そのロール以上か(admin は moderator の分もできる) */
+export const atLeast = (role: Role, min: Role) => RANK[role] >= RANK[min];
