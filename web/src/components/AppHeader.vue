@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 全ページの上。ロゴ・ナビ・検索欄。
-// 右端は、ログイン前は「HoshID でログイン」、ログイン中は四角いアバター(押すとマイページ・ログアウト)
+// 右端は、ログイン前は「HoshID でログイン」、ログイン中は四角いアバター(押すとマイページ・新規作成・プロフィールの設定・ログアウト)
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger } from "reka-ui";
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import IconLogIn from "~icons/lucide/log-in";
 import IconSearch from "~icons/lucide/search";
@@ -14,12 +14,18 @@ import Avatar from "./Avatar.vue";
 const { me, loaded } = useMe();
 const route = useRoute();
 const router = useRouter();
-const q = ref("");
+const q = ref(typeof route.query.q === "string" ? route.query.q : "");
+// 検索のページから来たときは、検索語を入れておく
+watch(
+  () => route.query.q,
+  (v) => {
+    if (route.name === "search") q.value = typeof v === "string" ? v : "";
+  },
+);
 const logoutForm = ref<HTMLFormElement | null>(null);
 
 function search() {
-  // 検索は次の PR。いまは一覧へ q を付けて送るだけ
-  void router.push({ path: "/", query: q.value ? { q: q.value } : {} });
+  void router.push({ path: "/search", query: q.value.trim() ? { q: q.value.trim() } : {} });
 }
 
 function myPage() {
@@ -102,6 +108,7 @@ const itemClass = "flex h-11 cursor-pointer items-center px-4 text-sm outline-no
               <Avatar
                 :name="me.displayName"
                 :handle="me.handle"
+                :src="me.avatar"
                 size="md"
                 class="size-9!"
               />
@@ -117,6 +124,18 @@ const itemClass = "flex h-11 cursor-pointer items-center px-4 text-sm outline-no
                   @select="myPage"
                 >
                   マイページ
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  :class="[itemClass, 'border-b border-[#DDE0E3]']"
+                  @select="router.push('/new')"
+                >
+                  新規作成
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  :class="[itemClass, 'border-b border-[#DDE0E3]']"
+                  @select="router.push('/settings/profile')"
+                >
+                  プロフィールの設定
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   :class="itemClass"

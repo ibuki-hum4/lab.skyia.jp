@@ -71,7 +71,22 @@ HoshID(OIDC)でログインします。[Better Auth](https://www.better-auth.com
 | `GET /api/users/:handle/followers`・`/following` | フォロワー・フォロー中の一覧 |
 | `POST`・`DELETE /api/users/:handle/follow` | フォローする・外す。ブロックし合っている相手は 403 |
 | `POST`・`DELETE /api/users/:handle/block` | ブロックする・外す。ブロックするとお互いのフォローを消す。相手には知らせない |
+| `GET /api/notes` | ノートの一覧(新しい順、カーソルでページ送り)。`?kind=`・`?status=`・`?tag=`・`?author=`・`?following=1`・`?drafts=1`(本人だけ)・`?q=`・`?cursor=`・`?limit=` |
+| `POST /api/notes` | 作る(`{ kind, title, body, status?, tags?, draft?, link?: { kind: "replication" | "derivation", sourceId } }`) |
+| `GET`・`PATCH`・`DELETE /api/notes/:id`、`POST /api/notes/:id/publish` | 1 件・直す(下書きの保存)・消す・公開。直す・消す・公開は本人だけ |
+| `GET /api/users/:handle/notes/:code` | `/@aki/EXP-006` の形で 1 件 |
+| `GET /api/notes/:id/replications`・`/lineage`・`/related` | 追試の一覧・系譜(派生を上下 3 段)・同じタグのノート |
+| `GET`・`POST /api/notes/:id/comments`、`PATCH`・`DELETE /api/comments/:id` | コメント。直す・消すは本人だけ(消したら「削除されました」) |
+| `POST`・`DELETE /api/notes/:id/like` | いいね。数を返す |
+| `GET /api/notes/tags`・`/api/notes/fails`・`/api/members`・`/api/search?q=` | タグと数・今週の FAIL・メンバー・検索(ノート・タグ・メンバー) |
+| `POST /api/notes/preview` | エディタのプレビュー(保存しない) |
+| `GET`・`PATCH /api/me/profile`、`PUT`・`DELETE /api/me/avatar`、`GET /api/users/:handle/avatar` | 表示名・自己紹介・アイコン(256KB まで、中身で判定。`?v=<ハッシュ>` で長くキャッシュ) |
+| `POST`・`DELETE /api/notes/:id/hide`・`/api/comments/:id/hide` | moderator 以上。理由を付けて隠す・戻す |
+| `POST`・`DELETE /api/admin/users/:handle/suspend` | admin。凍結(セッションも消す)・解除 |
 | `GET /healthz` | 動いていれば 200(DB は見ない) |
+
+- 長さの上限と連打の制限は [server/src/limits.ts](server/src/limits.ts)
+- ブロック: blocker の一覧・検索・タグ・コメント欄・追試の一覧・系譜から blocked のノートとコメントを外す。ブロックし合っている 2 人のあいだでは、コメント・追試・いいね・派生ができない。ノートそのものは URL を開けば誰でも読める
 
 - 型は [server/src/routes.ts](server/src/routes.ts) の `Api` です。web からは [web/src/api.ts](web/src/api.ts) の `api(...)` で、型付きで呼べます
 
@@ -173,7 +188,7 @@ Image Updater が入っていない場合は、`kustomization.yaml` の `newTag`
 - [ ] **バックアップをクラスタの外へ出す。** 保管先が未定
 - [ ] **HoshID のロールのクレームを確かめる。** いまは `roles` に「一般 / 役員 / 管理者」が入る前提
 - [ ] **`TRUSTED_PROXIES` の答え合わせ。** デプロイ後、いいねを 2 つの回線から押して、片方が 429 にならないことを確かめる
-- [ ] **日本語の全文検索。** pg_trgm は `postgres:17-alpine` に入っていて、日本語にも効く(3 文字以上の語だけ。PR #2 を参照)。次の PR で作る
+- [ ] **2 文字以下の語の検索。** pg_trgm の GIN は 3 文字以上の語にしか効かない(短い語は全件を見る)。件数が増えて遅くなったら pg_bigm を考える
 
 ### 構成
 
@@ -231,12 +246,14 @@ Image Updater が入っていない場合は、`kustomization.yaml` の `newTag`
 
 TypeScript は 6.0 にしています。7.0 は、`vue-tsc` と `typescript-eslint` がまだ対応していないためです。
 
-## これから書くページ(おすすめの順番)
+## 画面
 
-画面は、見本の [/about](web/src/views/AboutView.vue) のほかは、まだ「ここはまだ作っていません」と出るだけです。各ファイルの先頭のコメントに「このページでやること」「呼ぶ API」「使うとよい Vue の機能」を書いてあります。
-
-1. **一覧**([HomeView.vue](web/src/views/HomeView.vue)): `ref`・`onMounted`・`v-for`・`v-if` で、API を呼んで並べる基本
-2. **記事**([PostView.vue](web/src/views/PostView.vue)): props でパラメーターを受け取り、`watch` で読み直す。`v-html` と `prose`、目次
-3. **タグ**([TagView.vue](web/src/views/TagView.vue)): 一覧で作った部品を使い回し、composable にまとめてみる
-4. **いいねボタン**: コンポーネントを分けて、props と emit。429(連打)のときの表示
-5. **検索**: 一覧に入力欄を足して、`watch` と `useDebounceFn` で打ち終わってから呼ぶ
+| パス | 中身 |
+| --- | --- |
+| `/`・`/following` | みんなのノート(すべて / 実験 / 記事 / メモ)。サイドに今週の FAIL・タグ・ノートブック・以前の記事 |
+| `/@handle` | プロフィールと数の欄、ノートの一覧(本人には下書きも) |
+| `/@handle/EXP-006` | ノート 1 件(実験・記事・メモで形が変わる) |
+| `/new`・`/@handle/EXP-006/edit` | エディタ。`?kind=`、`?replicationOf=<id>`・`?derivedFrom=<id>` で追試・派生として開く |
+| `/tags`・`/tags/:tag`・`/search`・`/members` | タグ・検索・メンバー |
+| `/settings/profile` | 表示名・自己紹介・アイコン |
+| `/posts/:slug` | `content/` の以前の記事 |

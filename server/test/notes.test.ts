@@ -633,7 +633,7 @@ describe("アイコン画像", () => {
     );
 
     const upload = (b: Browser, body: Uint8Array | string, type = "image/webp") =>
-        b.fetch("/api/me/avatar", { method: "PUT", headers: { "content-type": type }, body: body as BodyInit });
+        b.fetch("/api/me/avatar", { method: "PUT", headers: { "content-type": type }, body: body as unknown as RequestInit["body"] });
 
     test("WebP と PNG を受ける。ハッシュ付きの URL で、nosniff と長いキャッシュで配る", async () => {
         const aki = await signIn(env, "s1", "aki");
@@ -690,7 +690,7 @@ describe("アイコン画像", () => {
         // 先頭だけ PNG に見せかけても、PNG のシグネチャ 8 バイトがそろわなければ通さない
         expect((await upload(aki, Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x20, 0x20]), "image/png")).status).toBe(415);
         expect((await aki.api("GET", "/api/me")).data.avatar).toBeNull();
-        expect((await anon().fetch("/api/me/avatar", { method: "PUT", body: png as BodyInit })).status).toBe(401);
+        expect((await anon().fetch("/api/me/avatar", { method: "PUT", body: png as unknown as RequestInit["body"] })).status).toBe(401);
     });
 });
 

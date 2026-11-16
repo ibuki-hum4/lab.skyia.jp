@@ -26,5 +26,35 @@ export const setBlock = (handle: string, on: boolean) =>
 /** ログインの入口(HoshID へ)。ログインのあと next に戻る */
 export const loginUrl = (next: string) => `/auth/login?next=${encodeURIComponent(next)}`;
 
+/** いいねを付ける・外す */
+export const setLike = (id: string, on: boolean) =>
+    api(on ? "POST /api/notes/:id/like" : "DELETE /api/notes/:id/like", { params: { id } });
+
 // 画面で使う型。server の型をそのまま使う
-export type { ExperimentStatus, HandleProblem, Me, PostMeta, PostType, Profile, Role, TocItem, UserSummary } from "@lab/server/types";
+export type {
+    Author,
+    CommentItem,
+    ExperimentStatus,
+    HandleProblem,
+    Lineage,
+    LineageNode,
+    LinkKind,
+    Me,
+    Member,
+    NoteCounts,
+    NoteDetail,
+    NoteKind,
+    NoteRef,
+    NoteStatus,
+    NoteSummary,
+    Page,
+    PostMeta,
+    PostType,
+    Profile,
+    Role,
+    StatusChange,
+    TagCount,
+    TocItem,
+    UserSummary,
+} from "@lab/server/types";
+export { LIMITS } from "@lab/server/limits";
