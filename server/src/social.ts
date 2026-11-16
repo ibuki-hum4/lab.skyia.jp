@@ -1,7 +1,9 @@
 // ユーザー・フォロー・ブロック(PostgreSQL、Prisma)。
+import { avatarUrl } from "./avatar";
 import type { Db } from "./db";
 import { Prisma } from "./generated/prisma/client";
 import { checkHandleShape } from "./handle";
+import { countNotes } from "./notes";
 import type { FollowResult, HandleProblem, Profile, SocialStore, UserSummary } from "./types";
 
 type Tx = Prisma.TransactionClient;
@@ -62,7 +64,7 @@ export function createSocialStore(db: Db): SocialStore {
         async profile(handle, viewerId): Promise<Profile | null> {
             const user = await db.user.findFirst({
                 where: { handle: { equals: handle, mode: "insensitive" } },
-                select: { id: true, handle: true, name: true, bio: true, _count: { select: { following: true, followers: true } } },
+                select: { id: true, handle: true, name: true, bio: true, avatarHash: true, _count: { select: { following: true, followers: true } } },
             });
             if (!user?.handle) return null;
 
@@ -70,6 +72,8 @@ export function createSocialStore(db: Db): SocialStore {
                 handle: user.handle,
                 displayName: user.name,
                 bio: user.bio,
+                avatar: avatarUrl(user.handle, user.avatarHash),
+                counts: await countNotes(db, user.id),
                 followingCount: user._count.following,
                 followerCount: user._count.followers,
             };

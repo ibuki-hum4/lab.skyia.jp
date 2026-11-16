@@ -13,7 +13,7 @@
   "dependencies": {
     "@fontsource/ibm-plex-sans-jp": "^5.3.1",
     "@fontsource/jetbrains-mono": "^5.3.0",
-    "@senrijs/senri": "^0.3.1",
+    "@senrijs/senri": "^0.3.2",
     "@vueuse/core": "^15.0.0",
     "reka-ui": "^2.11.0",
     "vue": "^3.5.45",

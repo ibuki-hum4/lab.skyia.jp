@@ -29,7 +29,7 @@ describe("ログイン", () => {
         expect(await sessionCount()).toBe(1);
 
         const me = await b.api("GET", "/api/me");
-        expect(me.data).toEqual({ handle: null, displayName: "テスト 太郎", role: "member" });
+        expect(me.data).toEqual({ handle: null, displayName: "テスト 太郎", role: "member", avatar: null });
     });
 
     test("Cookie は __Host-lab_session、HttpOnly・Secure・SameSite=Lax・Path=/(Domain なし)", async () => {
@@ -69,18 +69,38 @@ describe("ログイン", () => {
         expect(await again.login("/@taro")).toBe("/@taro");
     });
 
-    test("ロールと表示名は、ログインのたびに上書きされる", async () => {
-        env.fake!.state.user = { sub: "user-1", name: "前の名前", roles: "管理者" };
+    test("ロールはログインのたびに上書きされる。表示名は初回だけ HoshID から取る", async () => {
+        env.fake!.state.user = { sub: "user-1", name: "最初の名前", roles: "管理者" };
         const b = new Browser(env);
         await b.login("/");
-        expect((await b.api("GET", "/api/me")).data).toMatchObject({ role: "admin", displayName: "前の名前" });
+        expect((await b.api("GET", "/api/me")).data).toMatchObject({ role: "admin", displayName: "最初の名前" });
 
-        env.fake!.state.user = { sub: "user-1", name: "新しい名前", roles: ["一般", "役員"] };
+        env.fake!.state.user = { sub: "user-1", name: "HoshID で変えた名前", roles: ["一般", "役員"] };
         const b2 = new Browser(env);
         await b2.login("/");
-        expect((await b2.api("GET", "/api/me")).data).toMatchObject({ role: "moderator", displayName: "新しい名前" });
+        expect((await b2.api("GET", "/api/me")).data).toMatchObject({ role: "moderator", displayName: "最初の名前" });
         // 同じ人(sub)なので、ユーザーは 1 人のまま
         expect(await env.db.user.count()).toBe(1);
+    });
+
+    test("自分で変えた表示名は、次のログインでも残る", async () => {
+        env.fake!.state.user = { sub: "user-1", name: "HoshID の名前", roles: "一般" };
+        const b = new Browser(env);
+        await b.login("/");
+        await b.api("POST", "/api/me/handle", { handle: "taro" });
+        expect((await b.api("PATCH", "/api/me/profile", { displayName: "自分で決めた名前" })).status).toBe(200);
+
+        env.fake!.state.user = { sub: "user-1", name: "HoshID の名前 2", roles: "管理者" };
+        const b2 = new Browser(env);
+        await b2.login("/");
+        expect((await b2.api("GET", "/api/me")).data).toMatchObject({ role: "admin", displayName: "自分で決めた名前" });
+    });
+
+    test("初回の表示名は、長さの上限で切る", async () => {
+        env.fake!.state.user = { sub: "user-1", name: "あ".repeat(80), roles: "一般" };
+        const b = new Browser(env);
+        await b.login("/");
+        expect((await b.api("GET", "/api/me")).data.displayName).toBe("あ".repeat(50));
     });
 
     test("ロールのクレームがなければ member", async () => {
@@ -228,7 +248,7 @@ describe("safeNext", () => {
 });
 
 describe("requireRole", () => {
-    const user = (role: User["role"]): User => ({ id: "u", handle: "u", displayName: "", bio: "", role, suspendedAt: null });
+    const user = (role: User["role"]): User => ({ id: "u", handle: "u", displayName: "", bio: "", role, suspendedAt: null, avatarHash: null });
 
     test("ロールが足りなければ 403、ログインしていなければ 401", async () => {
         const mw = requireRole("moderator");

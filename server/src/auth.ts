@@ -22,10 +22,12 @@ import { genericOAuth } from "better-auth/plugins";
 import { decodeJwt } from "jose";
 import { createHash } from "node:crypto";
 import { roleFromClaims, type HoshIdConfig, type LabConfig } from "./config";
+import { LIMITS } from "./limits";
 import type { Db } from "./db";
 import { suggestHandle } from "./handle";
 import { safeNext } from "./next";
 import type { Role, User } from "./types";
+import { cleanDisplayName } from "./users";
 
 export const PROVIDER_ID = "hoshid";
 export const SESSION_COOKIE = "__Host-lab_session";
@@ -43,7 +45,8 @@ function profileFromClaims(claims: Record<string, unknown>, hoshid: HoshIdConfig
     const sub = String(claims.sub);
     const displayName = claims[hoshid.claims.displayName] ?? claims[hoshid.claims.nickname] ?? "";
     return {
-        name: String(displayName),
+        // 表示名の上限に合わせて切る(初回のログインのときだけ使う。あとは本人が変える)
+        name: cleanDisplayName(String(displayName)).slice(0, LIMITS.displayName),
         role: roleFromClaims(claims, hoshid.claims),
         // Better Auth は email を必ず要る。scope に email を入れていないので、sub から作った仮の値にする。
         // issuer ごとに分けるので、HoshID をつなぎ替えても混ざらない
@@ -79,6 +82,7 @@ export function createAuth({ config, db, trustedProxies }: AuthOptions) {
         user: {
             additionalFields: {
                 // HoshID のクレームから決める。ログインのたびに上書きする(overrideUserInfo)。
+                // 表示名(name)は初回だけ(下の databaseHooks.user.update で上書きを止める)。
                 // input: true でないとクレームから入らない。利用者が書き換えられないように、
                 // Better Auth の update-user は外に出していない
                 role: { type: "string", required: false, defaultValue: "member", input: true },
@@ -113,6 +117,15 @@ export function createAuth({ config, db, trustedProxies }: AuthOptions) {
         onAPIError: { errorURL: "/login/error" },
 
         databaseHooks: {
+            user: {
+                update: {
+                    // ログインのたびの上書き(overrideUserInfo)から、表示名を外す。ロールは上書きする。
+                    // 表示名を変えるのは /settings/profile(Prisma で直接書く。Better Auth の update-user は外に出していない)。
+                    // Better Auth はここで返したものを元のデータに重ねるので、キーを消すのではなく undefined を重ねる
+                    // (Prisma は undefined の項目を書かない)
+                    before: async (data) => ({ data: { ...data, name: undefined } }),
+                },
+            },
             session: {
                 create: {
                     // 凍結中の人には、セッションを作らない
@@ -143,7 +156,7 @@ export function createAuth({ config, db, trustedProxies }: AuthOptions) {
                               pkce: true,
                               // discovery に jwks_uri がなければ、HoshID を使わない(検証しない ID トークンは受けない)
                               requireIdTokenVerification: true,
-                              // 表示名とロールは、ログインのたびに上書きする
+                              // ロールは、ログインのたびに上書きする(表示名は上の databaseHooks で外す)
                               overrideUserInfo: true,
                               // ここに来る前に、Better Auth が ID トークンを検証している。
                               // profile のクレームは userinfo にしか入らないことがあるので、それも合わせる
@@ -183,7 +196,7 @@ function forwardCookies(c: Context, headers: Headers | undefined) {
 async function loadUserRow(db: Db, id: string): Promise<User | null> {
     const row = await db.user.findUnique({
         where: { id },
-        select: { id: true, handle: true, name: true, bio: true, role: true, suspendedAt: true },
+        select: { id: true, handle: true, name: true, bio: true, role: true, suspendedAt: true, avatarHash: true },
     });
     if (!row) return null;
     return {
@@ -193,6 +206,7 @@ async function loadUserRow(db: Db, id: string): Promise<User | null> {
         bio: row.bio,
         role: row.role as Role,
         suspendedAt: row.suspendedAt?.toISOString() ?? null,
+        avatarHash: row.avatarHash,
     };
 }
 

@@ -73,6 +73,8 @@ describe("フォローとブロック", () => {
             handle: "aki",
             displayName: "aki さん",
             bio: "",
+            avatar: null,
+            counts: { experiment: 0, pass: 0, fail: 0, watch: 0, article: 0, memo: 0 },
             followingCount: 1,
             followerCount: 0,
             viewer: { following: false, followedBy: true, blocking: false },
@@ -82,6 +84,8 @@ describe("フォローとブロック", () => {
             handle: "sora",
             displayName: "sora さん",
             bio: "",
+            avatar: null,
+            counts: { experiment: 0, pass: 0, fail: 0, watch: 0, article: 0, memo: 0 },
             followingCount: 0,
             followerCount: 1,
         });
